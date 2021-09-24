@@ -14,6 +14,9 @@
 //
 /// \authors: Denis Stogl, Andy Zelenak
 
+#ifndef ADMITTANCE_CONTROLLER__ADMITTANCE_RULE_IMPL_HPP_
+#define ADMITTANCE_CONTROLLER__ADMITTANCE_RULE_IMPL_HPP_
+
 #include "admittance_controller/admittance_rule.hpp"
 
 #include "angles/angles.h"
@@ -117,10 +120,10 @@ controller_interface::return_type AdmittanceRule::update(
     get_pose_of_control_frame_in_base_frame(current_pose_ik_base_frame_);
 
     // Convert all data to arrays for simpler calculation
-    transform_to_control_frame(reference_pose_ik_base_frame_, current_pose_control_frame_);
-    convert_message_to_array(current_pose_control_frame_, reference_pose_arr_);
-    transform_to_control_frame(current_pose_ik_base_frame_, reference_pose_control_frame_);
-    convert_message_to_array(reference_pose_control_frame_, current_pose_arr_);
+    transform_to_control_frame(reference_pose_ik_base_frame_, reference_pose_control_frame_);
+    convert_message_to_array(reference_pose_control_frame_, reference_pose_arr_);
+    transform_to_control_frame(current_pose_ik_base_frame_, current_pose_control_frame_);
+    convert_message_to_array(current_pose_control_frame_, current_pose_arr_);
 
     for (auto i = 0u; i < 6; ++i) {
       pose_error[i] = current_pose_arr_[i] - reference_pose_arr_[i];
@@ -136,10 +139,17 @@ controller_interface::return_type AdmittanceRule::update(
   } else {
     // In open-loop mode, assume the user's requested pose was exactly achieved
     // TODO(destogl): This will maybe now work when no feed-forward is used
-    current_pose_ik_base_frame_ = reference_pose_ik_base_frame_;
+    current_pose_ik_base_frame_ =
+      reference_pose_ik_base_frame_;  // FIXME: current pose is actually output of the admittance and not reference -> then pose error is again current - reference
 
-    // Sum admittance displacements (in ik_base_frame) from the previous relative poses
-    for (auto i = 0u; i < 6; ++i) {
+    current_pose_ik_base_frame_ = admittance_pose_ik_base_frame_;  // TEST
+
+    // Sum admittance displacements (in ik_base_frame) from the previous relative poses - this is
+    // needed because we are using feed-forward term in L221 when using joints
+    // This could be probably remove to that we calculate admittance_desired - reference to get the pose_error - cool this could be done above!!!! very cool, we need to try this...
+    // Feedforward term is current - reference
+    for (auto i = 0u; i < 6; ++i)
+    {
       sum_of_admittance_displacements_arr_[i] += relative_admittance_pose_arr_[i];
     }
 
@@ -214,10 +224,11 @@ controller_interface::return_type AdmittanceRule::update(
   update(current_joint_state, measured_wrench, reference_pose_from_joint_deltas_ik_base_frame_,
          period, desired_joint_state);
 
-  for (auto i = 0u; i < desired_joint_state.positions.size(); ++i) {
-    desired_joint_state.positions[i] += reference_joint_deltas[i];
-    desired_joint_state.velocities[i] += reference_joint_deltas[i] / period.seconds();
-  }
+  // TODO(destogl): this is moved to admittance controller
+  //   for (auto i = 0u; i < desired_joint_state.positions.size(); ++i) {  // TEST
+  //     desired_joint_state.positions[i] += reference_joint_deltas[i];
+  //     desired_joint_state.velocities[i] += reference_joint_deltas[i] / period.seconds();
+  //   }
 
   return controller_interface::return_type::OK;
 }
@@ -311,8 +322,10 @@ void AdmittanceRule::calculate_admittance_rule(
 )
 {
   // Compute admittance control law: F = M*a + D*v + S*(x - x_d)
-  for (auto i = 0u; i < 6; ++i) {
-    if (parameters_.selected_axes_[i]) {
+  for (auto i = 0u; i < 6; ++i)
+  {
+    if (parameters_.selected_axes_[i])
+    {
       // TODO(destogl): check if velocity is measured from hardware
       const double admittance_acceleration = (1 / parameters_.mass_[i]) * (measured_wrench[i] -
                                                    parameters_.damping_[i] * admittance_velocity_arr_[i] -
@@ -322,7 +335,8 @@ void AdmittanceRule::calculate_admittance_rule(
 
       // Calculate position
       desired_relative_pose[i] = admittance_velocity_arr_[i] * period.seconds();
-      if (std::fabs(desired_relative_pose[i]) < POSE_EPSILON) {
+      if (std::fabs(desired_relative_pose[i]) < POSE_EPSILON)
+      {
         desired_relative_pose[i] = 0.0;
       }
 
@@ -349,20 +363,32 @@ controller_interface::return_type AdmittanceRule::calculate_desired_joint_state(
   std::vector<double> relative_admittance_pose_vec(relative_pose.begin(), relative_pose.end());
   ik_->update_robot_state(current_joint_state);
   if (ik_->convert_cartesian_deltas_to_joint_deltas(
-    relative_admittance_pose_vec, identity_transform_, relative_desired_joint_state_vec_)){
-    for (auto i = 0u; i < desired_joint_state.positions.size(); ++i) {
+        relative_admittance_pose_vec, identity_transform_, relative_desired_joint_state_vec_))
+  {
+    for (auto i = 0u; i < desired_joint_state.positions.size(); ++i)
+    {
       desired_joint_state.positions[i] =
         current_joint_state.positions[i] + relative_desired_joint_state_vec_[i];
+      desired_joint_state.positions[i] = relative_desired_joint_state_vec_[i];  // TEST
       desired_joint_state.velocities[i] = relative_desired_joint_state_vec_[i] / period.seconds();
     }
-    } else {
-      RCLCPP_ERROR(rclcpp::get_logger("AdmittanceRule"), "Conversion of Cartesian deltas to joint deltas failed. Sending current joint values to the robot.");
-      desired_joint_state = current_joint_state;
-      std::fill(desired_joint_state.velocities.begin(), desired_joint_state.velocities.end(), 0.0);
-      return controller_interface::return_type::ERROR;
-    }
+  }
+  else
+  {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("AdmittanceRule"),
+      "Conversion of Cartesian deltas to joint deltas failed. Sending current joint values to the "
+      "robot.");
+    desired_joint_state = current_joint_state;
+    std::fill(
+      desired_joint_state.positions.begin(), desired_joint_state.positions.end(), 0.0);  // TEST
+    std::fill(desired_joint_state.velocities.begin(), desired_joint_state.velocities.end(), 0.0);
+    return controller_interface::return_type::ERROR;
+  }
 
-    return controller_interface::return_type::OK;
+  return controller_interface::return_type::OK;
 }
 
 }  // namespace admittance_controller
+
+#endif  // ADMITTANCE_CONTROLLER__ADMITTANCE_RULE_IMPL_HPP_

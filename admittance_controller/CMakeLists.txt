@@ -11,6 +11,7 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(backward_ros REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(control_toolbox REQUIRED)
 find_package(controller_interface REQUIRED)
@@ -19,6 +20,7 @@ find_package(filters REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(joint_limits REQUIRED)
+find_package(joint_trajectory_controller REQUIRED)
 find_package(moveit_ros_move_group REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(pluginlib REQUIRED)
@@ -43,6 +45,7 @@ target_include_directories(
 )
 ament_target_dependencies(
   admittance_controller
+  backward_ros
   control_msgs
   control_toolbox
   controller_interface
@@ -51,6 +54,7 @@ ament_target_dependencies(
   geometry_msgs
   hardware_interface
   joint_limits
+  joint_trajectory_controller
   moveit_ros_move_group
   moveit_ros_planning_interface
   pluginlib
@@ -114,6 +118,7 @@ ament_export_libraries(
   admittance_controller
 )
 ament_export_dependencies(
+  backward_ros
   control_msgs
   control_toolbox
   controller_interface
@@ -121,6 +126,7 @@ ament_export_dependencies(
   geometry_msgs
   hardware_interface
   joint_limits
+  joint_trajectory_controller
   pluginlib
   rclcpp
   rclcpp_lifecycle

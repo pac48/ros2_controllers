@@ -47,6 +47,7 @@ AdmittanceController::AdmittanceController()
 
 CallbackReturn AdmittanceController::on_init()
 {
+
   admittance_ = std::make_unique<admittance_controller::AdmittanceRule>();
 
   admittance_->parameters_.initialize(get_node());
@@ -57,14 +58,8 @@ CallbackReturn AdmittanceController::on_init()
     get_node()->declare_parameter<std::vector<std::string>>("command_interfaces", std::vector<std::string>({}));
     get_node()->declare_parameter<std::vector<std::string>>("state_interfaces", std::vector<std::string>({}));
     get_node()->declare_parameter<std::string>("ft_sensor_name", "");
-    get_node()->declare_parameter<std::string>("joint_limiter_type", "joint_limits/SimpleJointLimiter");
     get_node()->declare_parameter<bool>("use_joint_commands_as_input", false);
-    get_node()->declare_parameter<double>("action_monitor_rate", 20.0);
-    get_node()->declare_parameter<bool>("allow_partial_joints_goal", allow_partial_joints_goal_);
-    get_node()->declare_parameter<bool>(
-      "allow_integration_in_goal_trajectories", allow_integration_in_goal_trajectories_);
-    get_node()->declare_parameter<double>("constraints.stopped_velocity_tolerance", 0.01);
-    get_node()->declare_parameter<double>("constraints.goal_time", 0.0);
+    get_node()->declare_parameter<std::string>("joint_limiter_type", "joint_limits/SimpleJointLimiter");
 
     // TODO(destogl): enable when IK-plugin support is added
     // get_node()->declare_parameter<std::string>("IK.plugin", "");
@@ -202,7 +197,7 @@ CallbackReturn AdmittanceController::on_configure(
   RCLCPP_INFO(
     get_node()->get_logger(), "Command interfaces are [%s] and and state interfaces are [%s].",
     get_interface_list(command_interface_types_).c_str(),
-    get_interface_list(state_interface_types_).c_str());
+              get_interface_list(state_interface_types_).c_str());
 
   auto num_joints = joint_names_.size();
 
@@ -219,35 +214,40 @@ CallbackReturn AdmittanceController::on_configure(
   }
   else
   {
-    RCLCPP_INFO(get_node()->get_logger(), "Not using joint limiter plugin as none defined.");
+    RCLCPP_INFO(
+      get_node()->get_logger(), "Not using joint limiter plugin as none defined.");
   }
-
-  // subscriber callback
-  // non realtime
-  // TODO(karsten): check if traj msg and point time are valid
-  auto callback = [this](const std::shared_ptr<trajectory_msgs::msg::JointTrajectory> msg) -> void {
-    if (!validate_trajectory_msg(
-          *msg, allow_partial_joints_goal_, joint_names_, allow_integration_in_goal_trajectories_,
-          node_->now()))
-    {
-      return;
-    }
-
-    // http://wiki.ros.org/joint_trajectory_controller/UnderstandingTrajectoryReplacement
-    // always replace old msg with new one for now
-    if (subscriber_is_active_)
-    {
-      add_new_trajectory_msg(msg);
-    }
-  };
-
-  // TODO(karsten1987): create subscriber with subscription deactivated
-  joint_command_subscriber_ = node_->create_subscription<trajectory_msgs::msg::JointTrajectory>(
-    "~/joint_trajectory", rclcpp::SystemDefaultsQoS(), callback);
 
   // Initialize FTS semantic semantic_component
   force_torque_sensor_ = std::make_unique<semantic_components::ForceTorqueSensor>(
     semantic_components::ForceTorqueSensor(ft_sensor_name_));
+
+  // Subscribers and callbacks
+  if (admittance_->unified_mode_) {
+    auto callback_input_force = [&](const std::shared_ptr<ControllerCommandWrenchMsg> msg)
+      -> void
+      {
+        input_wrench_command_.writeFromNonRT(msg);
+      };
+    input_wrench_command_subscriber_ = get_node()->create_subscription<ControllerCommandWrenchMsg>(
+      "~/force_commands", rclcpp::SystemDefaultsQoS(), callback_input_force);
+  }
+
+  auto callback_input_joint = [&](const std::shared_ptr<ControllerCommandJointMsg> msg)
+  -> void
+  {
+    input_joint_command_.writeFromNonRT(msg);
+  };
+  input_joint_command_subscriber_ = get_node()->create_subscription<ControllerCommandJointMsg>(
+    "~/joint_commands", rclcpp::SystemDefaultsQoS(), callback_input_joint);
+
+  auto callback_input_pose = [&](const std::shared_ptr<ControllerCommandPoseMsg> msg)
+  -> void
+  {
+    input_pose_command_.writeFromNonRT(msg);
+  };
+  input_pose_command_subscriber_ = get_node()->create_subscription<ControllerCommandPoseMsg>(
+    "~/pose_commands", rclcpp::SystemDefaultsQoS(), callback_input_pose);
 
   // TODO(destogl): Add subscriber for velocity scaling
 
@@ -271,15 +271,7 @@ CallbackReturn AdmittanceController::on_configure(
   if (use_joint_commands_as_input_) {
     RCLCPP_INFO(get_node()->get_logger(), "Using Joint input mode.");
   } else {
-    RCLCPP_ERROR(get_node()->get_logger(), "Admittance controller does not support non-joint input modes.");
-    return CallbackReturn::ERROR;
-  }
-
-  // action server configuration
-  allow_partial_joints_goal_ = node_->get_parameter("allow_partial_joints_goal").get_value<bool>();
-  if (allow_partial_joints_goal_)
-  {
-    RCLCPP_INFO(get_node()->get_logger(), "Goals with partial set of joints are allowed");
+    RCLCPP_INFO(get_node()->get_logger(), "Using Cartesian input mode.");
   }
 
   // Configure AdmittanceRule
@@ -295,12 +287,6 @@ CallbackReturn AdmittanceController::on_configure(
   // HACK: This is workaround because it seems that updating parameters only in `on_activate` does
   // not work properly
   admittance_->parameters_.update();
-
-  default_tolerances_ = joint_trajectory_controller::get_segment_tolerances(*node_, joint_names_);
-
-  // Read parameters customizing controller for special cases
-  allow_integration_in_goal_trajectories_ =
-      node_->get_parameter("allow_integration_in_goal_trajectories").get_value<bool>();
 
   RCLCPP_INFO(get_node()->get_logger(), "configure successful");
   return CallbackReturn::SUCCESS;
@@ -376,33 +362,6 @@ CallbackReturn AdmittanceController::on_activate(const rclcpp_lifecycle::State &
     }
   }
 
-  // Store 'home' pose
-  traj_msg_home_ptr_ = std::make_shared<trajectory_msgs::msg::JointTrajectory>();
-  traj_msg_home_ptr_->header.stamp.sec = 0;
-  traj_msg_home_ptr_->header.stamp.nanosec = 0;
-  traj_msg_home_ptr_->points.resize(1);
-  traj_msg_home_ptr_->points[0].time_from_start.sec = 0;
-  traj_msg_home_ptr_->points[0].time_from_start.nanosec = 50000000;
-  traj_msg_home_ptr_->points[0].positions.resize(joint_state_interface_[0].size());
-  for (size_t index = 0; index < joint_state_interface_[0].size(); ++index)
-  {
-    traj_msg_home_ptr_->points[0].positions[index] =
-      joint_state_interface_[0][index].get().get_value();
-  }
-
-  traj_external_point_ptr_ = std::make_shared<joint_trajectory_controller::Trajectory>();
-  traj_home_point_ptr_ = std::make_shared<joint_trajectory_controller::Trajectory>();
-  traj_msg_external_point_ptr_.writeFromNonRT(
-    std::shared_ptr<trajectory_msgs::msg::JointTrajectory>());
-
-  subscriber_is_active_ = true;
-  traj_point_active_ptr_ = &traj_external_point_ptr_;
-
-  // Initialize current state storage if hardware state has tracking offset
-  resize_joint_trajectory_point(
-    last_commanded_state_, joint_names_.size(), has_velocity_state_interface_,
-    has_acceleration_state_interface_);
-  read_state_from_hardware(last_commanded_state_);
 
   // Initialize interface of the FTS semantic semantic component
   force_torque_sensor_->assign_loaned_state_interfaces(state_interfaces_);
@@ -417,8 +376,6 @@ CallbackReturn AdmittanceController::on_activate(const rclcpp_lifecycle::State &
   }
   // Handle restart of controller by reading last_commanded_state_ from commands if not nan
   read_state_from_command_interfaces(last_commanded_state_);
-
-  last_state_reference_ = last_commanded_state_;
 
   // Set initial command values - initialize all to simplify update
   std::shared_ptr<ControllerCommandWrenchMsg> msg_wrench = std::make_shared<ControllerCommandWrenchMsg>();
@@ -453,13 +410,6 @@ CallbackReturn AdmittanceController::on_activate(const rclcpp_lifecycle::State &
   }
   input_pose_command_.writeFromNonRT(msg_pose);
 
-  const double action_monitor_rate =
-    node_->get_parameter("action_monitor_rate").get_value<double>();
-
-  create_action_server(
-    node_, this, action_monitor_rate, allow_partial_joints_goal_, joint_names_,
-    allow_integration_in_goal_trajectories_);
-
   return CallbackReturn::SUCCESS;
 }
 
@@ -478,31 +428,9 @@ CallbackReturn AdmittanceController::on_deactivate(
   }
   release_interfaces();
 
-  release_action_server();
-
   force_torque_sensor_->release_interfaces();
 
-  subscriber_is_active_ = false;
-
   return CallbackReturn::SUCCESS;
-}
-
-CallbackReturn AdmittanceController::on_cleanup(const rclcpp_lifecycle::State &)
-{
-  // go home
-  traj_home_point_ptr_->update(traj_msg_home_ptr_);
-  traj_point_active_ptr_ = &traj_home_point_ptr_;
-
-  return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
-}
-
-CallbackReturn AdmittanceController::on_error(const rclcpp_lifecycle::State &)
-{
-  if (!reset())
-  {
-    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
-  }
-  return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
 
 controller_interface::return_type AdmittanceController::update(
@@ -513,214 +441,89 @@ controller_interface::return_type AdmittanceController::update(
     admittance_->parameters_.update();
   }
 
-  // Check if a new external message has been received from nonRT threads
-  check_for_new_trajectory(joint_names_, joint_command_interface_);
+  // get input commands
+  auto input_wrench_cmd = input_wrench_command_.readFromRT();
+  auto input_joint_cmd = input_joint_command_.readFromRT();
+  auto input_pose_cmd = input_pose_command_.readFromRT();
 
-  trajectory_msgs::msg::JointTrajectoryPoint state_reference, state_current, state_desired,
-    state_error;
-  trajectory_msgs::msg::JointTrajectory pre_admittance_point;
-  const auto joint_num = joint_names_.size();
-  resize_joint_trajectory_point(
-    state_reference, joint_num, has_velocity_state_interface_, has_acceleration_state_interface_);
-  resize_joint_trajectory_point(
-    state_current, joint_num, has_velocity_state_interface_, has_acceleration_state_interface_);
-  resize_joint_trajectory_point(
-    state_desired, joint_num, has_velocity_state_interface_, has_acceleration_state_interface_);
-  resize_joint_trajectory_point(
-    state_error, joint_num, has_velocity_state_interface_, has_acceleration_state_interface_);
+  // Position has to always be there
+  auto num_joints = joint_state_interface_[0].size();
+  trajectory_msgs::msg::JointTrajectoryPoint current_joint_states;
+  current_joint_states.positions.resize(num_joints);
+  current_joint_states.velocities.resize(num_joints, 0.0);
+  current_joint_states.accelerations.resize(num_joints, 0.0);
+  trajectory_msgs::msg::JointTrajectoryPoint desired_joint_states;
+  desired_joint_states.positions.resize(num_joints);
+  desired_joint_states.velocities.resize(num_joints);
+  desired_joint_states.accelerations.resize(num_joints);
 
-  // current state update
-  state_current.time_from_start.set__sec(0);
-  read_state_from_hardware(state_current);
+  read_state_from_hardware(current_joint_states);
 
   if (admittance_->parameters_.open_loop_control_) {
     // TODO(destogl): This may not work in every case.
     // Please add checking which states are available and which not!
-    state_current = last_commanded_state_;
+    current_joint_states = last_commanded_state_;
   }
 
-  // admittance rule
   geometry_msgs::msg::Wrench ft_values;
   force_torque_sensor_->get_values_as_message(ft_values);
 
-  const size_t num_joints = joint_names_.size();
+  // TODO(destogl): Enable this when unified mode is used
+//   if (admittance_->unified_mode_) {
+  //     admittance_->update(current_joint_states, ft_values, **input_pose_cmd, **input_wrench_cmd, period, desired_joint_states);
+//   } else {
 
-  // TODO(anyone): can I here also use const on joint_interface since the reference_wrapper is not
-  // changed, but its value only?
-  auto assign_interface_from_point =
-    [&, joint_num](auto & joint_inteface, const std::vector<double> & trajectory_point_interface) {
-      for (auto index = 0ul; index < joint_num; ++index)
-      {
-        joint_inteface[index].get().set_value(trajectory_point_interface[index]);
-      }
-    };
-
-  bool valid_trajectory_point = false;
-  // Used only when we have a valid trajectory
-  bool before_last_point = false;
-  bool abort = false;
-  bool outside_goal_state_tolerance = false;
-  joint_trajectory_controller::TrajectoryPointConstIter start_segment_itr, end_segment_itr;
-
-  // currently carrying out a trajectory
-  if (have_trajectory())
-  {
-    // if we will be sampling for the first time, prefix the trajectory with the current state
-    // TODO(destogl): Should we use `time` argument?
-    set_point_before_trajectory_msg(
-      open_loop_control_, node_->now(), state_current, last_commanded_state_);
-
-    // find segment for current timestamp
-    // joint_trajectory_controller::TrajectoryPointConstIter start_segment_itr, end_segment_itr;
-
-    valid_trajectory_point =
-      sample_trajectory(node_->now(), state_reference, start_segment_itr, end_segment_itr);
-    if (valid_trajectory_point)
-    {
-      last_state_reference_ = state_reference;
-      last_state_reference_.velocities.assign(num_joints, 0.0);
-      last_state_reference_.accelerations.assign(num_joints, 0.0);
-    }
-
-    before_last_point = is_before_last_point(end_segment_itr);
-  }
-
-  // TODO: Use pre-allocated joint_deltas_ vector 
-  std::array<double, 6> joint_deltas;
-
-  // Here we have no servo or trajectory command, maintain current position
-  if (!valid_trajectory_point)
-  {
-    state_reference = last_state_reference_;
-    // TODO(destogl): remove this lines later
-    state_reference.velocities.assign(num_joints, 0.0);
-    state_reference.accelerations.assign(num_joints, 0.0);
-
-    // if trajectory is invalid -> no feed-forward -> no joint_deltas
-    joint_deltas.fill(0.0);
-  }
-  else
-  {
-    // Calculate joint_deltas only when feed-forward is needed, i.e., trajectory is valid
+  // TODO(destogl): refactor this into different admittance controllers: 1. Pose input, Joint State input and Unified mode (is there need for switching between unified and non-unified mode?)
+  if (use_joint_commands_as_input_) {
+    std::array<double, 6> joint_deltas;
     // If there are no positions, expect velocities
-    if (state_reference.positions.empty())
-    {
-      for (size_t index = 0; index < num_joints; ++index)
-      {
-        joint_deltas[index] = state_reference.velocities[index] * period.seconds();
+    // TODO(destogl): add error handling
+    if ((*input_joint_cmd)->points[0].positions.empty()) {
+      for (auto index = 0u; index < num_joints; ++index) {
+        joint_deltas[index] = (*input_joint_cmd)->points[0].velocities[index] * period.seconds();
+      }
+    } else {
+      for (auto index = 0u; index < num_joints; ++index) {
+        // TODO(destogl): ATTENTION: This does not work properly, deltas are getting neutralized and robot is not moving on external forces
+        // TODO(anyone): Is here OK to use shortest_angular_distance?
+        joint_deltas[index] = angles::shortest_angular_distance(current_joint_states.positions[index], (*input_joint_cmd)->points[0].positions[index]);
       }
     }
-    else
-    {
-      for (size_t index = 0; index < num_joints; ++index)
-      {
-        joint_deltas[index] = angles::shortest_angular_distance(
-          state_current.positions[index], state_reference.positions[index]);
-      }
-    }
+
+    admittance_->update(current_joint_states, ft_values, joint_deltas, period, desired_joint_states);
+  } else {
+    admittance_->update(current_joint_states, ft_values, **input_pose_cmd, period, desired_joint_states);
   }
+//   }
 
-  pre_admittance_point.points.push_back(state_reference);
-
-  state_desired.positions.resize(num_joints);
-  state_desired.velocities.resize(num_joints);
-  admittance_->update(
-    state_current, ft_values, joint_deltas, period, state_desired);
-
-  for (size_t index = 0; index < num_joints; ++index)
-  {
-    state_desired.positions[index] +=
-      state_reference.positions[index];  // TEST: reverse this to makes more sense
-    state_desired.velocities[index] +=
-      state_reference.velocities[index];  // TEST: reverse this to makes more sense
-  }
-
-  // Apply joint limiter
   if (joint_limiter_)
   {
-    joint_limiter_->enforce(state_current, state_desired, period);
-  }
-
-  // Compute state_error
-  auto compute_error_for_joint = [&](
-                                   trajectory_msgs::msg::JointTrajectoryPoint & error, int index,
-                                   const trajectory_msgs::msg::JointTrajectoryPoint & current,
-                                   const trajectory_msgs::msg::JointTrajectoryPoint & desired) {
-    // error defined as the difference between current and desired
-    error.positions[index] =
-      angles::shortest_angular_distance(current.positions[index], desired.positions[index]);
-    if (has_velocity_state_interface_ && has_velocity_command_interface_)
-    {
-      error.velocities[index] = desired.velocities[index] - current.velocities[index];
-    }
-    if (has_acceleration_state_interface_ && has_acceleration_command_interface_)
-    {
-      error.accelerations[index] = desired.accelerations[index] - current.accelerations[index];
-    }
-  };
-
-  for (auto index = 0ul; index < joint_num; ++index)
-  {
-    compute_error_for_joint(state_error, index, state_current, state_desired);
-
-    // Check if trajectory is complete or should be aborted
-    if(valid_trajectory_point) {
-      if (
-        before_last_point &&
-        !check_state_tolerance_per_joint(
-          state_error, index, default_tolerances_.state_tolerance[index], false))
-      {
-        abort = true;
-      }
-      // past the final point, check that we end up inside goal tolerance
-      if (
-        !before_last_point &&
-        !check_state_tolerance_per_joint(
-          state_error, index, default_tolerances_.goal_state_tolerance[index], false))
-      {
-        outside_goal_state_tolerance = true;
-      }
-    }
+    joint_limiter_->enforce(current_joint_states, desired_joint_states, period);
   }
 
   // Write new joint angles to the robot
-  // set values for next hardware write()
-  if (has_position_command_interface_)
-  {
-    assign_interface_from_point(joint_command_interface_[0], state_desired.positions);
+  for (auto index = 0u; index < num_joints; ++index) {
+    if (has_position_command_interface_) {
+      joint_command_interface_[0][index].get().set_value(desired_joint_states.positions[index]);
+    }
+    if (has_velocity_command_interface_) {
+      joint_command_interface_[1][index].get().set_value(desired_joint_states.velocities[index]);
+    }
   }
-  if (has_velocity_command_interface_)
-  {
-    assign_interface_from_point(joint_command_interface_[1], state_desired.velocities);
-  }
-  if (has_acceleration_command_interface_)
-  {
-    assign_interface_from_point(joint_command_interface_[2], state_desired.accelerations);
-  }
-  // TODO(anyone): Add here "if using_closed_loop_hw_interface_adapter" (see ROS1) - #171
-  //       if (check_if_interface_type_exist(
-  //           command_interface_types_, hardware_interface::HW_IF_EFFORT)) {
-  //         assign_interface_from_point(joint_command_interface_[3], state_desired.effort);
-  //       }
-
-  if(valid_trajectory_point) {
-    // handle action server feedback
-    perform_action_server_update(
-      before_last_point, abort, outside_goal_state_tolerance,
-      default_tolerances_.goal_time_tolerance, node_->now(), joint_names_, state_current,
-      state_desired, state_error, start_segment_itr);
-  }
-
-  // store command as state when hardware state has tracking offset
-  // TODO: Should we be checking if open_loop_control_ around this assignment?
-  last_commanded_state_ = state_desired;
+  last_commanded_state_ = desired_joint_states;
 
   // Publish controller state
   state_publisher_->lock();
-  state_publisher_->msg_.input_joint_command = pre_admittance_point;
-  state_publisher_->msg_.desired_joint_state = state_desired;
-  state_publisher_->msg_.actual_joint_state = state_current;
-  state_publisher_->msg_.error_joint_state = state_error;
+  state_publisher_->msg_.input_wrench_command = **input_wrench_cmd;
+  state_publisher_->msg_.input_pose_command = **input_pose_cmd;
+  state_publisher_->msg_.input_joint_command = **input_joint_cmd;
+
+  state_publisher_->msg_.desired_joint_state = desired_joint_states;
+  state_publisher_->msg_.actual_joint_state = current_joint_states;
+  for (auto index = 0u; index < num_joints; ++index) {
+    state_publisher_->msg_.error_joint_state.positions[index] = angles::shortest_angular_distance(
+      current_joint_states.positions[index], desired_joint_states.positions[index]);
+  }
   admittance_->get_controller_state(state_publisher_->msg_);
   state_publisher_->unlockAndPublish();
 
@@ -833,4 +636,5 @@ bool AdmittanceController::read_state_from_command_interfaces(
 #include "pluginlib/class_list_macros.hpp"
 
 PLUGINLIB_EXPORT_CLASS(
-  admittance_controller::AdmittanceController, controller_interface::ControllerInterface)
+  admittance_controller::AdmittanceController,
+  controller_interface::ControllerInterface)

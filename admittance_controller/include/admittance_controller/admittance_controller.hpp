@@ -40,11 +40,15 @@
 // TODO(destogl): this is only temporary to work with servo. It should be either trajectory_msgs/msg/JointTrajectoryPoint or std_msgs/msg/Float64MultiArray
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 
+#include "joint_trajectory_controller/trajectory_execution_impl.hpp"
+#include "joint_trajectory_controller/tolerances.hpp"
+
 namespace admittance_controller
 {
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
-class AdmittanceController : public controller_interface::ControllerInterface
+class AdmittanceController : public controller_interface::ControllerInterface,
+                             public joint_trajectory_controller::TrajectoryExecutionImpl
 {
 public:
   ADMITTANCE_CONTROLLER_PUBLIC
@@ -69,6 +73,12 @@ public:
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State & previous_state) override;
 
   ADMITTANCE_CONTROLLER_PUBLIC
+  CallbackReturn on_cleanup(const rclcpp_lifecycle::State & previous_state) override;
+
+  ADMITTANCE_CONTROLLER_PUBLIC
+  CallbackReturn on_error(const rclcpp_lifecycle::State & previous_state) override;
+
+  ADMITTANCE_CONTROLLER_PUBLIC
   controller_interface::return_type update(
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
@@ -76,17 +86,26 @@ protected:
   std::vector<std::string> joint_names_;
   std::vector<std::string> command_interface_types_;
   std::vector<std::string> state_interface_types_;
+  std::vector<double> joint_deltas_;
   std::string ft_sensor_name_;
   bool use_joint_commands_as_input_;
   std::string joint_limiter_type_;
 
+  // Parameters for some special cases, e.g. hydraulics powered robots
+  /// Run he controller in open-loop, i.e., read hardware states only when starting controller.
+  /// This is useful when robot is not exactly following the commanded trajectory.
   bool hardware_state_has_offset_;
+  bool open_loop_control_ = false;
   trajectory_msgs::msg::JointTrajectoryPoint last_commanded_state_;
+  trajectory_msgs::msg::JointTrajectoryPoint last_state_reference_;
 
   // joint limiter
   using JointLimiter = joint_limits::JointLimiterInterface<joint_limits::JointLimits>;
   std::shared_ptr<pluginlib::ClassLoader<JointLimiter>> joint_limiter_loader_;
   std::unique_ptr<JointLimiter> joint_limiter_;
+
+  /// Allow integration in goal trajectories to accept goals without position or velocity specified
+  bool allow_integration_in_goal_trajectories_ = false;
 
   // Internal variables
   std::unique_ptr<semantic_components::ForceTorqueSensor> force_torque_sensor_;
@@ -122,6 +141,10 @@ protected:
   rclcpp::Publisher<ControllerStateMsg>::SharedPtr s_publisher_;
   std::unique_ptr<ControllerStatePublisher> state_publisher_;
 
+  bool allow_partial_joints_goal_ = false;
+
+  joint_trajectory_controller::SegmentTolerances default_tolerances_;
+
   // Internal access to sorted interfaces
 
   // To reduce number of variables and to make the code shorter the interfaces are ordered in types
@@ -141,8 +164,10 @@ protected:
   InterfaceReferences<hardware_interface::LoanedStateInterface> joint_state_interface_;
 
   bool has_velocity_state_interface_ = false;
+  bool has_acceleration_state_interface_ = false;
   bool has_position_command_interface_ = false;
   bool has_velocity_command_interface_ = false;
+  bool has_acceleration_command_interface_ = false;
 
   void read_state_from_hardware(trajectory_msgs::msg::JointTrajectoryPoint & state);
 

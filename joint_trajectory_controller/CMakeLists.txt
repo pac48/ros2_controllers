@@ -15,23 +15,31 @@ find_package(angles REQUIRED)
 find_package(controller_interface REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(hardware_interface REQUIRED)
+find_package(joint_limits REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(realtime_tools REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 
-add_library(joint_trajectory_controller SHARED
+add_library(
+  joint_trajectory_controller
+  SHARED
   src/joint_trajectory_controller.cpp
   src/trajectory.cpp
 )
-target_include_directories(joint_trajectory_controller PRIVATE include)
+target_include_directories(
+  joint_trajectory_controller
+  PRIVATE
+  include
+)
 ament_target_dependencies(joint_trajectory_controller
   angles
   builtin_interfaces
   controller_interface
   control_msgs
   hardware_interface
+  joint_limits
   pluginlib
   rclcpp
   rclcpp_lifecycle
@@ -73,6 +81,7 @@ if(BUILD_TESTING)
   ament_target_dependencies(test_trajectory_controller
     control_msgs
     hardware_interface
+    joint_limits
     rclcpp
     rclcpp_lifecycle
     realtime_tools
@@ -87,6 +96,7 @@ if(BUILD_TESTING)
   target_include_directories(test_load_joint_trajectory_controller PRIVATE include)
   ament_target_dependencies(test_load_joint_trajectory_controller
     controller_manager
+    joint_limits
     realtime_tools
     ros2_control_test_assets
   )
@@ -102,6 +112,7 @@ if(BUILD_TESTING)
   ament_target_dependencies(test_trajectory_actions
     control_msgs
     hardware_interface
+    joint_limits
     rclcpp
     rclcpp_lifecycle
     ros2_control_test_assets
@@ -114,6 +125,7 @@ ament_export_dependencies(
   controller_interface
   control_msgs
   hardware_interface
+  joint_limits
   rclcpp
   rclcpp_lifecycle
   trajectory_msgs

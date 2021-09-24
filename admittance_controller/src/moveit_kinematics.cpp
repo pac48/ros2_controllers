@@ -18,10 +18,10 @@
 
 #include "tf2_eigen/tf2_eigen.hpp"
 
-constexpr auto ROS_LOG_THROTTLE_PERIOD = std::chrono::milliseconds(3000).count();
+constexpr auto ROS_LOG_THROTTLE_PERIOD = std::chrono::milliseconds(1000).count();
 // TODO: Parameterize singularity thresholds
 constexpr double LOWER_SINGULARITY_THRESHOLD = 20.;
-constexpr double APPROACHING_STOP_SINGULARITY_THRESHOLD = 60.;
+constexpr double APPROACHING_STOP_SINGULARITY_THRESHOLD = 80;
 constexpr double HARD_STOP_SINGULARITY_THRESHOLD = 120.;
 
 namespace admittance_controller
@@ -96,7 +96,7 @@ bool MoveItKinematics::convert_cartesian_deltas_to_joint_deltas(
   pseudo_inverse_ = svd.matrixV() * matrix_s_.inverse() * svd.matrixU().transpose();
 
   Eigen::VectorXd  delta_theta = pseudo_inverse_ * delta_x;
-  delta_theta *= velocityScalingFactorForSingularity(delta_x, svd, pseudo_inverse_);
+  // delta_theta *= velocityScalingFactorForSingularity(delta_x, svd, pseudo_inverse_);
 
   std::vector<double> delta_theta_v(&delta_theta[0], delta_theta.data() + delta_theta.cols() * delta_theta.rows());
   delta_theta_vec = delta_theta_v;
@@ -216,17 +216,17 @@ double MoveItKinematics::velocityScalingFactorForSingularity(const Eigen::Vector
     velocity_scale =
         1. - (ini_condition - LOWER_SINGULARITY_THRESHOLD) /
                  (upper_threshold - LOWER_SINGULARITY_THRESHOLD);
-    RCLCPP_WARN_STREAM_THROTTLE(node_->get_logger(), *node_->get_clock(), ROS_LOG_THROTTLE_PERIOD, "Close to a singularity, decelerating");
+    RCLCPP_WARN_STREAM_THROTTLE(node_->get_logger(), *node_->get_clock(), ROS_LOG_THROTTLE_PERIOD, "Close to a singularity, decelerating: " << LOWER_SINGULARITY_THRESHOLD << " < " << ini_condition << " < " << upper_threshold);
   }
 
   // Very close to singularity, so halt.
   else if (ini_condition > upper_threshold)
   {
     velocity_scale = 0;
-    RCLCPP_WARN_STREAM_THROTTLE(node_->get_logger(), *node_->get_clock(), ROS_LOG_THROTTLE_PERIOD, "Very close to a singularity, emergency stop");
+    RCLCPP_WARN_STREAM_THROTTLE(node_->get_logger(), *node_->get_clock(), ROS_LOG_THROTTLE_PERIOD, "Very close to a singularity, emergency stop: " << ini_condition << " > " << upper_threshold);
   }
 
-  return velocity_scale;
+  return 1.0;
 }
 
 }  // namespace admittance_controller
