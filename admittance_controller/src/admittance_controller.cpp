@@ -419,6 +419,7 @@ CallbackReturn AdmittanceController::on_activate(const rclcpp_lifecycle::State &
   read_state_from_command_interfaces(last_commanded_state_);
 
   last_state_reference_ = last_commanded_state_;
+  prev_trajectory_point_ = last_commanded_state_;
 
   // Set initial command values - initialize all to simplify update
   std::shared_ptr<ControllerCommandWrenchMsg> msg_wrench = std::make_shared<ControllerCommandWrenchMsg>();
@@ -568,7 +569,7 @@ controller_interface::return_type AdmittanceController::update(
     // if we will be sampling for the first time, prefix the trajectory with the current state
     // TODO(destogl): Should we use `time` argument?
     set_point_before_trajectory_msg(
-      open_loop_control_, node_->now(), state_current, last_commanded_state_);
+      open_loop_control_, node_->now(), state_current, prev_trajectory_point_);
 
     // find segment for current timestamp
     // joint_trajectory_controller::TrajectoryPointConstIter start_segment_itr, end_segment_itr;
@@ -583,6 +584,8 @@ controller_interface::return_type AdmittanceController::update(
     }
 
     before_last_point = is_before_last_point(end_segment_itr);
+
+    prev_trajectory_point_ = state_desired;
   }
 
   // TODO: Use pre-allocated joint_deltas_ vector 

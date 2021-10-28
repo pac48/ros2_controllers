@@ -98,6 +98,7 @@ protected:
   bool open_loop_control_ = false;
   trajectory_msgs::msg::JointTrajectoryPoint last_commanded_state_;
   trajectory_msgs::msg::JointTrajectoryPoint last_state_reference_;
+  trajectory_msgs::msg::JointTrajectoryPoint prev_trajectory_point_;
 
   // joint limiter
   using JointLimiter = joint_limits::JointLimiterInterface<joint_limits::JointLimits>;
