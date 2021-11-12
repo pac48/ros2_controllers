@@ -262,7 +262,8 @@ controller_interface::return_type AdmittanceRule::get_controller_state(
 
   state_message.current_pose = current_pose_ik_base_frame_;
   state_message.desired_pose = admittance_pose_ik_base_frame_;
-  state_message.relative_admittance = sum_of_admittance_displacements_;
+  // TODO(destogl): Enable this field for debugging.
+//   state_message.relative_admittance = sum_of_admittance_displacements_;
   state_message.relative_desired_pose = relative_admittance_pose_ik_base_frame_;
 
   return controller_interface::return_type::OK;
