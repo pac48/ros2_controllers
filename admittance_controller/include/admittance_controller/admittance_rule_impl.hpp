@@ -72,8 +72,23 @@ controller_interface::return_type AdmittanceRule::configure(rclcpp::Node::Shared
   admittance_rule_calculated_values_.accelerations.resize(6, 0.0);
   admittance_rule_calculated_values_.effort.resize(6, 0.0);
 
-  // Initialize IK
-  ik_ = std::make_shared<MoveItKinematics>(node, parameters_.ik_group_name_);
+  // Load the differential IK plugin
+  if (parameters_.ik_plugin_name_.empty())
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("AdmittanceRule"), "A differential IK plugin name was not specified in the config file. Exiting.");
+    std::exit(EXIT_FAILURE);
+  }
+  try
+  {
+    ik_ = ik_loader_.createSharedInstance(parameters_.ik_plugin_name_);
+  }
+  catch (pluginlib::PluginlibException& ex)
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("AdmittanceRule"), "Exception while loading the IK plugin '%s': '%s'",
+                 parameters_.ik_plugin_name_.c_str(), ex.what());
+    std::exit(EXIT_FAILURE);
+  }
+  ik_->initialize(node, parameters_.ik_group_name_);
 
   return controller_interface::return_type::OK;
 }

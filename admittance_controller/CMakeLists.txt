@@ -21,8 +21,6 @@ find_package(geometry_msgs REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(joint_limits REQUIRED)
 find_package(joint_trajectory_controller REQUIRED)
-find_package(moveit_ros_move_group REQUIRED)
-find_package(moveit_ros_planning_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
@@ -31,12 +29,32 @@ find_package(tf2 REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(trajectory_msgs REQUIRED)
 
-add_library(
-  admittance_controller
-  SHARED
+# We require a differential inverse kinematics plugin for converting Cartesian admittance to joint admittance
+# Base class for the IK plugin
+add_library(ik_plugin_base SHARED
+  src/ik_plugin_base.cpp
+)
+target_include_directories(
+  ik_plugin_base
+  PRIVATE
+  include
+)
+target_include_directories(
+  ik_plugin_base
+  PUBLIC
+  include
+)
+ament_target_dependencies(
+  ik_plugin_base
+  rclcpp
+)
+
+# The admittance controller
+add_library(admittance_controller SHARED
   src/admittance_controller.cpp
-  src/moveit_kinematics.cpp
+  src/ik_plugin_base.cpp
 )
 target_include_directories(
   admittance_controller
@@ -55,8 +73,6 @@ ament_target_dependencies(
   hardware_interface
   joint_limits
   joint_trajectory_controller
-  moveit_ros_move_group
-  moveit_ros_planning_interface
   pluginlib
   rclcpp
   rclcpp_lifecycle
@@ -115,6 +131,7 @@ ament_export_include_directories(
   include
 )
 ament_export_libraries(
+  ik_plugin_base
   admittance_controller
 )
 ament_export_dependencies(

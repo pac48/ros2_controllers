@@ -20,7 +20,6 @@
 #include <map>
 
 #include "angles/angles.h"
-#include "admittance_controller/moveit_kinematics.hpp"
 #include "control_msgs/msg/admittance_controller_state.hpp"
 #include "control_toolbox/parameter_handler.hpp"
 #include "controller_interface/controller_interface.hpp"
@@ -33,6 +32,10 @@
 #include "tf2_ros/transform_listener.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include <tf2_ros/buffer.h>
+
+// Differential kinematics plugins
+#include "admittance_controller/ik_plugin_base.hpp"
+#include "pluginlib/class_loader.hpp"
 
 namespace {  // Utility namespace
 
@@ -172,10 +175,11 @@ namespace admittance_controller
 class AdmittanceParameters : public control_toolbox::ParameterHandler
 {
 public:
-  AdmittanceParameters() : control_toolbox::ParameterHandler("", 7, 0, 24, 4)
+  AdmittanceParameters() : control_toolbox::ParameterHandler("", 7, 0, 24, 5)
   {
     add_string_parameter("IK.base", false);
     add_string_parameter("IK.group_name", false);
+    add_string_parameter("IK.plugin_name", false);
     add_string_parameter("control_frame", true);
     add_string_parameter("sensor_frame", false);
 
@@ -296,11 +300,15 @@ public:
     RCUTILS_LOG_INFO_NAMED(
         logger_name_.c_str(),
        "IK group name frame: %s", ik_group_name_.c_str());
-    control_frame_ = string_parameters_[2].second;
+    ik_plugin_name_ = string_parameters_[2].second;
+    RCUTILS_LOG_INFO_NAMED(
+        logger_name_.c_str(),
+       "IK plugin name: %s", ik_plugin_name_.c_str());
+    control_frame_ = string_parameters_[3].second;
     RCUTILS_LOG_INFO_NAMED(
         logger_name_.c_str(),
        "Control frame: %s", control_frame_.c_str());
-    sensor_frame_ = string_parameters_[3].second;
+    sensor_frame_ = string_parameters_[4].second;
     RCUTILS_LOG_INFO_NAMED(
         logger_name_.c_str(),
        "Sensor frame: %s", sensor_frame_.c_str());
@@ -347,11 +355,12 @@ public:
   // IK parameters
   std::string ik_base_frame_;
   std::string ik_group_name_;
+  std::string ik_plugin_name_;
+  // Depends on the scenario: usually base_link, tool or end-effector
+  std::string control_frame_;
   // Admittance calculations (displacement etc) are done in this frame.
   // Frame where wrench measurements are taken
   std::string sensor_frame_;
-  // Depends on the scenario: usually base_link, tool or end-effector
-  std::string control_frame_;
 
   bool open_loop_control_;
   bool enable_parameter_update_without_reactivation_;
@@ -367,7 +376,10 @@ public:
 class AdmittanceRule
 {
 public:
-  AdmittanceRule() = default;
+  AdmittanceRule() :
+    ik_loader_("admittance_controller", "admittance_controller::IKBaseClass")
+  {
+  }
 
   controller_interface::return_type configure(rclcpp::Node::SharedPtr node);
 
@@ -443,8 +455,9 @@ protected:
     trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_state
   );
 
-  // IK variables
-  std::shared_ptr<MoveItKinematics> ik_;
+  // Differential IK algorithm (loads a plugin)
+  pluginlib::ClassLoader<admittance_controller::IKBaseClass> ik_loader_;
+  std::shared_ptr<admittance_controller::IKBaseClass> ik_;
 
   // Clock
   rclcpp::Clock::SharedPtr clock_;

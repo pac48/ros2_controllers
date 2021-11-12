@@ -13,39 +13,42 @@
 // limitations under the License.
 //
 /// \author: Andy Zelenak
+/// \description: Base class for differential kinematics plugins
 
 #pragma once
 
-#include "Eigen/Core"
 #include "geometry_msgs/msg/transform_stamped.hpp"
-#include "moveit/robot_model_loader/robot_model_loader.h"
-#include "moveit/robot_state/robot_state.h"
+#include "trajectory_msgs/msg/joint_trajectory_point.hpp"
+
 #include "rclcpp/rclcpp.hpp"
 
 namespace admittance_controller
 {
-
-class MoveItKinematics
+class IKBaseClass
 {
 public:
+  IKBaseClass();
+  virtual ~IKBaseClass();
+
   /**
    * \brief Create an object which takes Cartesian delta-x and converts to joint delta-theta.
    * It uses the Jacobian from MoveIt.
    */
-  MoveItKinematics(const std::shared_ptr<rclcpp::Node> & node, const std::string & group_name);
+  virtual bool
+  initialize(const std::shared_ptr<rclcpp::Node> & node, const std::string & group_name) = 0;
 
   /**
    * \brief Convert Cartesian delta-x to joint delta-theta, using the Jacobian.
    * \param delta_x_vec input Cartesian deltas (x, y, z, rx, ry, rz)
-   * \param control_frame_to_ik_base transform the requested delta_x to MoveIt's ik_base frame
+   * \param control_frame_to_ik_base transform the requested delta_x to ik_base frame
    * \param delta_theta_vec output vector with joint states
    * \return true if successful
    */
-  bool
+  virtual bool
   convert_cartesian_deltas_to_joint_deltas(
     std::vector<double> & delta_x_vec,
     const geometry_msgs::msg::TransformStamped & control_frame_to_ik_base,
-    std::vector<double> & delta_theta_vec);
+    std::vector<double> & delta_theta_vec) = 0;
 
   /**
    * \brief Convert joint delta-theta to Cartesian delta-x, using the Jacobian.
@@ -54,48 +57,15 @@ public:
    * \param[out] delta_x_vec  Cartesian deltas (x, y, z, rx, ry, rz)
    * \return true if successful
    */
-  bool
+  virtual bool
   convert_joint_deltas_to_cartesian_deltas(
     std::vector<double> &  delta_theta_vec,
     const geometry_msgs::msg::TransformStamped & tf_ik_base_to_desired_cartesian_frame,
-    std::vector<double> & delta_x_vec);
+    std::vector<double> & delta_x_vec) = 0;
 
   /**
-   *  \brief Get a link transform in MoveIt's reference frame, ik_base
+   * \brief Update the state of the robot in the IK solver
    */
-  Eigen::Isometry3d
-  get_link_transform(
-    const std::string& link_name, const trajectory_msgs::msg::JointTrajectoryPoint & joint_state);
-
-  bool update_robot_state(const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state)
-  {
-    if (current_joint_state.positions.size() != joint_model_group_->getVariableNames().size())
-    {
-      RCLCPP_ERROR(node_->get_logger(), "Vector size mismatch in update_robot_state()");
-      return false;
-    }
-
-    kinematic_state_->setJointGroupPositions(joint_model_group_, current_joint_state.positions);
-    return true;
-  }
-
-private:
-  /** \brief Possibly calculate a velocity scaling factor, due to proximity of
-   * singularity and direction of motion
-   */
-  double velocityScalingFactorForSingularity(const Eigen::VectorXd& commanded_velocity,
-                                             const Eigen::JacobiSVD<Eigen::MatrixXd>& svd,
-                                             const Eigen::MatrixXd& pseudo_inverse);
-
-  // MoveIt setup
-  const moveit::core::JointModelGroup* joint_model_group_;
-  moveit::core::RobotStatePtr kinematic_state_;
-  std::shared_ptr<rclcpp::Node> node_;
-
-  // Pre-allocate for speed
-  Eigen::MatrixXd jacobian_;
-  Eigen::MatrixXd matrix_s_;
-  Eigen::MatrixXd pseudo_inverse_;
+  virtual bool update_robot_state(const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state) = 0;
 };
-
-}  // namespace admittance_controller
+}
