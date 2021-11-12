@@ -73,22 +73,28 @@ controller_interface::return_type AdmittanceRule::configure(rclcpp::Node::Shared
   admittance_rule_calculated_values_.effort.resize(6, 0.0);
 
   // Load the differential IK plugin
-  if (parameters_.ik_plugin_name_.empty())
+  if (!parameters_.ik_plugin_name_.empty())
   {
-    RCLCPP_ERROR(rclcpp::get_logger("AdmittanceRule"), "A differential IK plugin name was not specified in the config file. Exiting.");
-    std::exit(EXIT_FAILURE);
+    try
+    {
+      ik_loader_ = std::make_shared<pluginlib::ClassLoader<ik_plugin_base::IKBaseClass>>(
+        "ik_plugin_base", "ik_plugin_base::IKBaseClass");
+      ik_ = std::unique_ptr<ik_plugin_base::IKBaseClass>(
+        ik_loader_->createUnmanagedInstance(parameters_.ik_plugin_name_));
+      ik_->initialize(node, parameters_.ik_group_name_);
+    }
+    catch (pluginlib::PluginlibException& ex)
+    {
+      RCLCPP_ERROR(rclcpp::get_logger("AdmittanceRule"), "Exception while loading the IK plugin '%s': '%s'",
+                   parameters_.ik_plugin_name_.c_str(), ex.what());
+      return controller_interface::return_type::ERROR;
+    }
   }
-  try
+  else
   {
-    ik_ = ik_loader_.createSharedInstance(parameters_.ik_plugin_name_);
+    RCLCPP_ERROR(rclcpp::get_logger("AdmittanceRule"), "A differential IK plugin name was not specified in the config file.");
+    return controller_interface::return_type::ERROR;
   }
-  catch (pluginlib::PluginlibException& ex)
-  {
-    RCLCPP_ERROR(rclcpp::get_logger("AdmittanceRule"), "Exception while loading the IK plugin '%s': '%s'",
-                 parameters_.ik_plugin_name_.c_str(), ex.what());
-    std::exit(EXIT_FAILURE);
-  }
-  ik_->initialize(node, parameters_.ik_group_name_);
 
   return controller_interface::return_type::OK;
 }

@@ -15,20 +15,21 @@
 /// \author: Andy Zelenak
 /// \description: Base class for differential kinematics plugins
 
-#pragma once
+#ifndef IK_PLUGIN_BASE__IK_PLUGIN_BASE_HPP_
+#define IK_PLUGIN_BASE__IK_PLUGIN_BASE_HPP_
 
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 
-namespace admittance_controller
+namespace ik_plugin_base
 {
 class IKBaseClass
 {
 public:
-  IKBaseClass();
-  virtual ~IKBaseClass();
+  IKBaseClass() = default;
+  virtual ~IKBaseClass() = default;
 
   /**
    * \brief Create an object which takes Cartesian delta-x and converts to joint delta-theta.
@@ -68,4 +69,7 @@ public:
    */
   virtual bool update_robot_state(const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state) = 0;
 };
-}
+
+}  // namespace ik_plugin_base
+
+#endif  // IK_PLUGIN_BASE__IK_PLUGIN_BASE_HPP_

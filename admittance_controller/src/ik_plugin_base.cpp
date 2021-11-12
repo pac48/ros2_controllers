@@ -15,10 +15,8 @@
 /// \author: Andy Zelenak
 /// \description: Base class for differential kinematics plugins
 
-#include <admittance_controller/ik_plugin_base.hpp>
+#include "ik_plugin_base/ik_plugin_base.hpp"
 
-namespace admittance_controller
+namespace ik_plugin_base
 {
-IKBaseClass::IKBaseClass() = default;
-IKBaseClass::~IKBaseClass() = default;
-}  // namespace admittance_controller
+}  // namespace ik_plugin_base

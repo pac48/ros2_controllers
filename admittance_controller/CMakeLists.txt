@@ -41,11 +41,6 @@ target_include_directories(
   PRIVATE
   include
 )
-target_include_directories(
-  ik_plugin_base
-  PUBLIC
-  include
-)
 ament_target_dependencies(
   ik_plugin_base
   rclcpp
@@ -54,12 +49,15 @@ ament_target_dependencies(
 # The admittance controller
 add_library(admittance_controller SHARED
   src/admittance_controller.cpp
-  src/ik_plugin_base.cpp
 )
 target_include_directories(
   admittance_controller
   PRIVATE
   include
+)
+target_link_libraries(
+  admittance_controller
+  ik_plugin_base
 )
 ament_target_dependencies(
   admittance_controller
@@ -89,7 +87,7 @@ target_compile_definitions(admittance_controller PRIVATE "ADMITTANCE_CONTROLLER_
 pluginlib_export_plugin_description_file(controller_interface admittance_controller.xml)
 
 install(
-  TARGETS admittance_controller
+  TARGETS admittance_controller ik_plugin_base
   RUNTIME DESTINATION bin
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -131,8 +129,8 @@ ament_export_include_directories(
   include
 )
 ament_export_libraries(
-  ik_plugin_base
   admittance_controller
+  ik_plugin_base
 )
 ament_export_dependencies(
   backward_ros

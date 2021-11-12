@@ -34,7 +34,7 @@
 #include <tf2_ros/buffer.h>
 
 // Differential kinematics plugins
-#include "admittance_controller/ik_plugin_base.hpp"
+#include "ik_plugin_base/ik_plugin_base.hpp"
 #include "pluginlib/class_loader.hpp"
 
 namespace {  // Utility namespace
@@ -376,10 +376,7 @@ public:
 class AdmittanceRule
 {
 public:
-  AdmittanceRule() :
-    ik_loader_("admittance_controller", "admittance_controller::IKBaseClass")
-  {
-  }
+  AdmittanceRule() = default;
 
   controller_interface::return_type configure(rclcpp::Node::SharedPtr node);
 
@@ -456,8 +453,8 @@ protected:
   );
 
   // Differential IK algorithm (loads a plugin)
-  pluginlib::ClassLoader<admittance_controller::IKBaseClass> ik_loader_;
-  std::shared_ptr<admittance_controller::IKBaseClass> ik_;
+  std::shared_ptr<pluginlib::ClassLoader<ik_plugin_base::IKBaseClass>> ik_loader_;
+  std::unique_ptr<ik_plugin_base::IKBaseClass> ik_;
 
   // Clock
   rclcpp::Clock::SharedPtr clock_;
