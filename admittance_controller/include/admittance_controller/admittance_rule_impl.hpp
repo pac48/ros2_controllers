@@ -77,8 +77,10 @@ controller_interface::return_type AdmittanceRule::configure(rclcpp::Node::Shared
   {
     try
     {
+      // TODO(destogl): add "ik_plugin_base" into separate package and then rename the package in
+      // the next line from "admittance_controller" to "ik_base_plugin"
       ik_loader_ = std::make_shared<pluginlib::ClassLoader<ik_plugin_base::IKBaseClass>>(
-        "ik_plugin_base", "ik_plugin_base::IKBaseClass");
+        "admittance_controller", "ik_plugin_base::IKBaseClass");
       ik_ = std::unique_ptr<ik_plugin_base::IKBaseClass>(
         ik_loader_->createUnmanagedInstance(parameters_.ik_plugin_name_));
       ik_->initialize(node, parameters_.ik_group_name_);
