@@ -398,6 +398,22 @@ public:
     trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_states
   );
 
+  /**
+   * Calculate 'desired joint states' based on the 'measured force' and 'reference joint state'.
+   *
+   * \param[in] current_joint_state
+   * \param[in] measured_wrench
+   * \param[in] reference_joint_state
+   * \param[in] period
+   * \param[out] desired_joint_state
+   */
+  controller_interface::return_type update(
+    const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
+    const geometry_msgs::msg::Wrench & measured_wrench,
+    const trajectory_msgs::msg::JointTrajectoryPoint & reference_joint_state,
+    const rclcpp::Duration & period,
+    trajectory_msgs::msg::JointTrajectoryPoint & desired_joint_states);
+
   controller_interface::return_type update(
     const trajectory_msgs::msg::JointTrajectoryPoint & current_joint_state,
     const geometry_msgs::msg::Wrench & measured_wrench,

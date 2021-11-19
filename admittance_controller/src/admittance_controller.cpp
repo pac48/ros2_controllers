@@ -419,7 +419,7 @@ CallbackReturn AdmittanceController::on_activate(const rclcpp_lifecycle::State &
   read_state_from_command_interfaces(last_commanded_state_);
 
   last_state_reference_ = last_commanded_state_;
-  prev_trajectory_point_ = last_commanded_state_;
+//   prev_trajectory_point_ = last_commanded_state_;
 
   // Set initial command values - initialize all to simplify update
   std::shared_ptr<ControllerCommandWrenchMsg> msg_wrench = std::make_shared<ControllerCommandWrenchMsg>();
@@ -569,7 +569,7 @@ controller_interface::return_type AdmittanceController::update(
     // if we will be sampling for the first time, prefix the trajectory with the current state
     // TODO(destogl): Should we use `time` argument?
     set_point_before_trajectory_msg(
-      open_loop_control_, node_->now(), state_current, prev_trajectory_point_);
+      open_loop_control_, node_->now(), state_current, last_state_reference_);
 
     // find segment for current timestamp
     // joint_trajectory_controller::TrajectoryPointConstIter start_segment_itr, end_segment_itr;
@@ -584,59 +584,31 @@ controller_interface::return_type AdmittanceController::update(
     }
 
     before_last_point = is_before_last_point(end_segment_itr);
-
-    prev_trajectory_point_ = state_desired;
+//     prev_trajectory_point_ = state_desired;
   }
 
-  // TODO: Use pre-allocated joint_deltas_ vector 
-  std::array<double, 6> joint_deltas;
-
-  // Here we have no servo or trajectory command, maintain current position
+  // If there is no servo or trajectory command -> keep the same reference
   if (!valid_trajectory_point)
   {
     state_reference = last_state_reference_;
-    // TODO(destogl): remove this lines later
-    state_reference.velocities.assign(num_joints, 0.0);
-    state_reference.accelerations.assign(num_joints, 0.0);
-
-    // if trajectory is invalid -> no feed-forward -> no joint_deltas
-    joint_deltas.fill(0.0);
-  }
-  else
-  {
-    // Calculate joint_deltas only when feed-forward is needed, i.e., trajectory is valid
-    // If there are no positions, expect velocities
-    if (state_reference.positions.empty())
-    {
-      for (size_t index = 0; index < num_joints; ++index)
-      {
-        joint_deltas[index] = state_reference.velocities[index] * period.seconds();
-      }
-    }
-    else
-    {
-      for (size_t index = 0; index < num_joints; ++index)
-      {
-        joint_deltas[index] = angles::shortest_angular_distance(
-          state_current.positions[index], state_reference.positions[index]);
-      }
-    }
   }
 
   pre_admittance_point.points.push_back(state_reference);
 
-  state_desired.positions.resize(num_joints);
-  state_desired.velocities.resize(num_joints);
-  admittance_->update(
-    state_current, ft_values, joint_deltas, period, state_desired);
-
-  for (size_t index = 0; index < num_joints; ++index)
+  if (state_reference.positions.empty())
   {
-    state_desired.positions[index] +=
-      state_reference.positions[index];  // TEST: reverse this to makes more sense
-    state_desired.velocities[index] +=
-      state_reference.velocities[index];  // TEST: reverse this to makes more sense
+    state_desired.positions.assign(num_joints, 0.0);
   }
+  else
+  {
+    state_desired.positions = state_reference.positions;
+  }
+  state_desired.velocities.assign(num_joints, 0.0);
+  state_desired.accelerations.assign(num_joints, 0.0);
+
+  RCLCPP_WARN(get_node()->get_logger(), "Setting from state reference. pos size: '%zu'; vel. size '%zu'", state_reference.positions.size(), state_reference.velocities.size());
+
+  admittance_->update(state_current, ft_values, state_reference, period, state_desired);
 
   // Apply joint limiter
   if (joint_limiter_)
