@@ -606,8 +606,6 @@ controller_interface::return_type AdmittanceController::update(
   state_desired.velocities.assign(num_joints, 0.0);
   state_desired.accelerations.assign(num_joints, 0.0);
 
-  RCLCPP_WARN(get_node()->get_logger(), "Setting from state reference. pos size: '%zu'; vel. size '%zu'", state_reference.positions.size(), state_reference.velocities.size());
-
   admittance_->update(state_current, ft_values, state_reference, period, state_desired);
 
   // Apply joint limiter

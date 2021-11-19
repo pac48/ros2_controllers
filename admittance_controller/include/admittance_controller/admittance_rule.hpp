@@ -227,9 +227,9 @@ public:
     ret = !empty_parameter_in_list(string_parameters_);
 
     int index = 0;
-    int offset_index_bool = 1;
+    int offset_index_bool = 2;
     // check if parameters are all properly set for selected axes
-    for (auto i = 0ul; i < 6; ++i) {
+    for (size_t i = 0; i < 6; ++i) {
       if (bool_parameters_[offset_index_bool + i].second)
       {
         // check mass parameters
@@ -323,8 +323,8 @@ public:
        "Using update without reactivation: %s", (enable_parameter_update_without_reactivation_ ? "True" : "False"));
 
 
-    int offset_index_bool = 1;  // 2 because there is already one parameter
-    for (auto i = 0ul; i < 6; ++i)
+    int offset_index_bool = 2;  // 2 because there are already two parameters used above
+    for (size_t i = 0; i < 6; ++i)
     {
       selected_axes_[i] = bool_parameters_[i + offset_index_bool].second;
       RCUTILS_LOG_INFO_NAMED(

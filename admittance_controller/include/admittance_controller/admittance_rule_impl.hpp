@@ -407,29 +407,29 @@ void AdmittanceRule::calculate_admittance_rule(
 )
 {
   // Compute admittance control law: F = M*a + D*v + S*(x - x_d)
-  for (auto i = 0u; i < 6; ++i)
+  for (size_t axis = 0; axis < 6; ++axis)
   {
-    if (parameters_.selected_axes_[i])
+    if (parameters_.selected_axes_[axis])
     {
       // TODO(destogl): check if velocity is measured from hardware
-      const double admittance_acceleration = (1 / parameters_.mass_[i]) * (measured_wrench[i] -
-                                                   parameters_.damping_[i] * admittance_velocity_arr_[i] -
-                                                   parameters_.stiffness_[i] * pose_error[i]);
+      const double admittance_acceleration = (1 / parameters_.mass_[axis]) * (measured_wrench[axis] -
+                                                   parameters_.damping_[axis] * admittance_velocity_arr_[axis] -
+                                                   parameters_.stiffness_[axis] * pose_error[axis]);
 
-      admittance_velocity_arr_[i] += admittance_acceleration * period.seconds();
+      admittance_velocity_arr_[axis] += admittance_acceleration * period.seconds();
 
       // Calculate position
-      desired_relative_pose[i] = admittance_velocity_arr_[i] * period.seconds();
-      if (std::fabs(desired_relative_pose[i]) < POSE_EPSILON)
+      desired_relative_pose[axis] = admittance_velocity_arr_[axis] * period.seconds();
+      if (std::fabs(desired_relative_pose[axis]) < POSE_EPSILON)
       {
-        desired_relative_pose[i] = 0.0;
+        desired_relative_pose[axis] = 0.0;
       }
 
       // Store data for publishing to state variable
-      admittance_rule_calculated_values_.positions[i] = pose_error[i];
-      admittance_rule_calculated_values_.velocities[i] = admittance_velocity_arr_[i];
-      admittance_rule_calculated_values_.accelerations[i] = admittance_acceleration;
-      admittance_rule_calculated_values_.effort[i] = measured_wrench[i];
+      admittance_rule_calculated_values_.positions[axis] = pose_error[axis];
+      admittance_rule_calculated_values_.velocities[axis] = admittance_velocity_arr_[axis];
+      admittance_rule_calculated_values_.accelerations[axis] = admittance_acceleration;
+      admittance_rule_calculated_values_.effort[axis] = measured_wrench[axis];
     }
   }
 }
