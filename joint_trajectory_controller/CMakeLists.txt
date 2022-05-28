@@ -21,12 +21,17 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(realtime_tools REQUIRED)
 find_package(trajectory_msgs REQUIRED)
+find_package(lifecycle_msgs REQUIRED)
+find_package(joint_limits_interface REQUIRED)
+find_package(transmission_interface REQUIRED)
+
 
 add_library(joint_trajectory_controller SHARED
   src/joint_trajectory_controller.cpp
   src/trajectory.cpp
+        include/joint_trajectory_controller/trajectory_execution_impl.hpp
 )
-target_include_directories(joint_trajectory_controller PRIVATE include)
+target_include_directories(joint_trajectory_controller PUBLIC include)
 ament_target_dependencies(joint_trajectory_controller
   angles
   builtin_interfaces
@@ -39,6 +44,9 @@ ament_target_dependencies(joint_trajectory_controller
   rclcpp_lifecycle
   realtime_tools
   trajectory_msgs
+        lifecycle_msgs
+        joint_limits_interface
+        transmission_interface
 )
 # Causes the visibility macros to use dllexport rather than dllimport,
 # which is appropriate when building the dll but not consuming it.
@@ -55,7 +63,8 @@ install(TARGETS joint_trajectory_controller
   LIBRARY DESTINATION lib
 )
 
-if(BUILD_TESTING)
+set(BUILD_TESTING 0)
+ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(controller_manager REQUIRED)
   find_package(ros2_control_test_assets REQUIRED)
@@ -122,6 +131,7 @@ ament_export_dependencies(
   rclcpp
   rclcpp_lifecycle
   trajectory_msgs
+        transmission_interface
 )
 ament_export_include_directories(
   include

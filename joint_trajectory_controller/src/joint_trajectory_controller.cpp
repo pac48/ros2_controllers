@@ -42,6 +42,8 @@
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
 #include "std_msgs/msg/header.hpp"
+#include "joint_trajectory_controller/trajectory_execution_impl.hpp"
+
 
 namespace joint_trajectory_controller
 {
