@@ -38,7 +38,8 @@ controller_interface::CallbackReturn ForwardControllersBase::on_init()
 {
   try
   {
-    declare_parameters();
+      // params already there
+//    declare_parameters();
   }
   catch (const std::exception & e)
   {

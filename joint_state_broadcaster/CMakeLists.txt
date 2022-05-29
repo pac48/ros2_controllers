@@ -52,6 +52,7 @@ install(
   LIBRARY DESTINATION lib
 )
 
+set(BUILD_TESTING 0)
 if(BUILD_TESTING)
   find_package(ament_cmake_gmock REQUIRED)
   find_package(controller_manager REQUIRED)
