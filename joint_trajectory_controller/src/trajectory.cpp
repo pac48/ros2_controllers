@@ -23,7 +23,7 @@
 #include "std_msgs/msg/header.hpp"
 namespace joint_trajectory_controller
 {
-Trajectory::Trajectory() : trajectory_start_time_(0), time_before_traj_msg_(0) {}
+Trajectory::Trajectory() : trajectory_start_time_(0), time_before_traj_msg_(0, 0,rcl_clock_type_e::RCL_ROS_TIME) {}
 
 Trajectory::Trajectory(std::shared_ptr<trajectory_msgs::msg::JointTrajectory> joint_trajectory)
 : trajectory_msg_(joint_trajectory),
