@@ -1,0 +1,9 @@
+<library path="kinematics_plugin">
+  <class name="kinematics_plugin/Kinematics"
+         type="kinematics_plugin::Kinematics"
+         base_class_type="kinematics_interface::KinematicsBaseClass">
+    <description>
+      ik for admittance control
+    </description>
+  </class>
+</library>
