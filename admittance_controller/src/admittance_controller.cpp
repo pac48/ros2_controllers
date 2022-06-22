@@ -776,6 +776,7 @@ bool AdmittanceController::read_state_from_command_interfaces(
       state.velocities.clear();
       has_values = false;
     }
+
   }
   else {
     state.velocities.clear();
